@@ -1,0 +1,389 @@
+---
+title: "HW1"
+author: "Sharaj Kunjar"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+# Discrete Random Walks on networks
+
+Given a network, we have
+
+:   Total number of walkers, $W$
+
+    Row vector of number of walkers on node i, $W_i$
+
+    Rate of diffusion of walkers, $r$
+
+Assumptions
+
+:   $r$ is uniform across all nodes and walkers
+
+    The total number of walkers $W$ doesn't change
+
+    The random walk process is Markov
+
+```{r}
+#load packages
+library(igraph)
+library(ggplot2)
+library(scales)
+library(tidyverse)
+```
+
+## Deterministic
+
+### Adjacency matrix approach
+
+We are given an adjacency matrix $A = [A_{ij}]$
+
+$$
+W_i(t+1) = (1-r)*W_i(t) + \sum_jA_{ij}*r*W_j(t)/k_j \\
+W_i(\infty) = \sum_jA_{ij}*W_j(\infty)/k_j
+$$
+
+Analytically,
+
+$W_i(\infty) = W*k_i/2L$
+
+where L is the total number of edges in the networks
+
+#### Function to compute W
+
+```{r}
+#Input is initial vector of walkers per node, diffusion rate, adjacency matrix and max number of iterations
+
+#Output is dataframe with the evolution of number of walkers per node with time
+RW_adj <- function(vec, r, A, Tmax)
+{
+  k <- rowSums(A) #degree of nodes
+  
+  mat <- matrix(NA, nrow = Tmax, ncol = ncol(A)) #track walkers through all time
+  mat[1,] <- vec #initialize matrix with initial Wvec
+  
+  for(t in 1:(Tmax-1))
+  {
+    for(i in 1:nrow(A))
+    {
+      x <- numeric(nrow(A))
+      
+      for(j in 1:length(x))
+      {
+        x[j] <- A[i,j]*mat[t,j]/k[j]
+      }
+      
+      mat[t+1,i] <- (1-r)*mat[t,i] + r*sum(x) 
+    }
+  }
+  
+  df <- cbind(c(1:Tmax), as.data.frame(mat))
+  colnames(df) <- c("Time", as.character(c(1:N)))
+  
+  return(df)
+}
+```
+
+#### Initialize variables
+
+```{r}
+N <- 500 #Network size
+p <- 0.1 #Probability of connections 
+W <- 2*N #Number of walkers
+r <- 0.5 #Diffusion rate
+Tmax <- 100 #Time to run random walk
+
+g <- erdos.renyi.game(N, p) #generate network
+A <- as.matrix(as_adjacency_matrix(g)) #extract adjacency matrix
+
+Wvec <- numeric(N) #vector with number of walkers per node 
+
+#assign walkers to all nodes randomly
+for(i in 1:W)
+{
+  j <- sample(c(1:N), 1)
+  Wvec[j] <- Wvec[j]+1 
+}
+```
+
+#### Simulate and visualize
+
+```{r}
+W_df <- RW_adj(Wvec, r, A, Tmax) #simulate the network
+
+kvec <- degree(g) #degrees of all nodes
+W_k <- data.frame("degree" = kvec,
+                  "W_sim" = unlist(W_df[Tmax,-1]),
+                  "W_anl" = W*kvec/sum(kvec))
+
+W_k_agg <- aggregate.data.frame(W_k[,c("W_sim", "W_anl")], by = list(W_k$degree), FUN = "mean")
+
+colnames(W_k_agg) <- c("degree", "Simulated", "Analytical")
+df_plot <- reshape2::melt(W_k_agg, id.vars = c("degree"), variable.name = "Condition", value.name = "Num_walkers")
+
+#Visualize
+ggplot(df_plot, aes(x=degree, y = Num_walkers, size = Condition, 
+                    color = Condition, linewidth = Condition))+
+  theme_light(base_size = 20)+
+  geom_point()+
+  geom_line(linetype = "dashed")+
+  scale_color_manual(values = c("#eb9c5c", "#3b719f"))+
+  scale_size_manual(values = c(3, 0))+
+  scale_linewidth_manual(values = c(0, 1))+
+  labs(x = "Degree", y= "Number of Walkers",
+       title = "Discrete and Deterministic Random Walk",
+       subtitle = "Adjacency matrix approach")+
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        legend.position = "bottom")
+
+```
+
+### Input is a degree block
+
+We are now only given degree distribution $P(k)$, and degree correlations $P(k'|k)$
+
+The average number of walkers on a node of degree k
+
+$$
+W_k(t+1) = (1-r)*W_k(t) + k\sum_{k'}r*P(k'|k)*W_{k'}(t)/k' 
+$$
+
+For uncorrelated graphs, $P(k'|k) = k' *P(k')/<k>$
+
+The stationary state,
+
+$$
+W_k(\infty)=k*<W>/<k> 
+$$
+
+where $<k>$ is the average degree and $<W> = W/N$ is the average number of walkers per node
+
+#### Function to compute W
+
+```{r}
+#Input is the initial vector of walkers per node of degree k, diffusion rate r, 
+#degrees distribution, network size, max number of iterations 
+
+#Output is the evolution of the number of walkers per node with degree k (W_k(t)) with time
+RW_Pk <- function(vec, r, P, N, Tmax)
+{
+  nk <- length(P)
+  mat <- matrix(NA, nrow = Tmax, ncol = nk) #track walkers through all time
+  mat[1,] <- vec #initialize matrix with initial Wvec
+  
+  W_av <- sum(vec)/N #average number of walkers per node
+  k_av <- sum(c(0:(nk-1))*P)
+  
+  for(t in 1:(Tmax-1))
+  {
+    for(i in 1:nk)
+    {
+      
+      mat[t+1,i] <- (1-r)*mat[t,i] + r*(i-1)*W_av/k_av
+    }
+  }
+  
+  df <- cbind(c(1:Tmax), as.data.frame(mat))
+  colnames(df) <- c("Time", as.character(c(0:(nk-1))))
+  
+  return(df)
+}
+```
+
+#### Initialize variables
+
+```{r}
+N <- 500 #Network size
+p <- 0.1 #Probability of connections 
+W <- 2*N #Number of walkers
+r <- 0.5 #Diffusion rate
+Tmax <- 100 #Time to run random walk
+
+g <- erdos.renyi.game(N, p) #generate network
+
+P <- degree_distribution(g) #extract adjacency matrix
+nk <- length(P)
+kvec <- c(0:(nk-1)) #all the possible degrees
+
+Wvec <- numeric(nk) #vector with number of walkers per node of degree k
+
+#assign walkers to all nodes randomly
+for(i in 1:W)
+{
+  j <- sample(c(1:length(Wvec)), 1)
+  
+  if(j==0)
+  {
+    j <- j+1
+  }
+
+  Wvec[j] <- Wvec[j]+1 
+}
+```
+
+#### Simulate and visualize
+
+```{r}
+W_df <- RW_Pk(Wvec, r, P, N, Tmax) #simulate the network
+
+W_k <- data.frame("degree" = kvec,
+                  "Simulated" = unlist(W_df[Tmax,-1]),
+                  "Analytical" = kvec*W/(p*N**2))
+
+
+df_plot <- reshape2::melt(W_k, id.vars = c("degree"), variable.name = "Condition", value.name = "Num_walkers")
+
+#Visualize
+ggplot(df_plot, aes(x=degree, y = Num_walkers, size = Condition, 
+                    color = Condition, linewidth = Condition))+
+  theme_light(base_size = 20)+
+  geom_point()+
+  geom_line(linetype = "dashed")+
+  scale_color_manual(values = c("#eb9c5c", "#3b719f"))+
+  scale_size_manual(values = c(3, 0))+
+  scale_linewidth_manual(values = c(0, 1))+
+  labs(x = "Degree", y= "Number of Walkers",
+       title = "Discrete and Deterministic Random Walk",
+       subtitle = "Degree block approach")+
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        legend.position = "bottom")
+```
+
+## Stochastic
+
+In the stochastic approach, given a network with initial distribution of random walkers, at every time step $t$:
+
+1.  We pick a node $i$ with probability $1/N$
+2.  For every random walker on the node, we choose whether it diffuses (with probability $r$)
+3.  For every random walker on the node that does diffuse, we choose a neighbor $j$
+4.  We then move the random walker to the node $j$
+
+Given the stochastic nature of this process, it is repeated several times to obtain an ensemble of possible results.
+
+```{r}
+RW_stoch <- function(vec, g, r, Tmax)
+{
+  N <- length(V(g)) #size of the network
+  
+  mat <- matrix(NA, nrow = Tmax, ncol = N) #track walkers through all time
+  mat[1,] <- vec #initialize matrix with initial Wvec
+  
+  for(t in 1:Tmax)
+  {
+    i <- sample(c(1:N),1) #choose focal node i
+    
+    if(vec[i]>0)
+    {
+      #iterate over walkers
+      for(w in 1:vec[i])
+      {
+        move <- rbinom(1,1,r) #choose if it will move
+        
+        if(move==1)
+        {
+          nbr <- neighbors(g, i) 
+          j <- sample(nbr, 1) #choose neighbor
+          
+          vec[i] <- vec[i] - 1 #move from i
+          vec[j] <- vec[j] + 1 #move to j
+        }
+      }
+    }
+    
+    mat[t,] <- vec #update matrix of walkers
+  }
+    
+  df <- cbind(c(1:Tmax), as.data.frame(mat))
+  colnames(df) <- c("Time", as.character(c(1:N)))
+  
+  return(df)
+}
+```
+
+#### Initialize variables
+
+```{r}
+N <- 100 #Network size
+p <- 0.1 #Probability of connections 
+W <- 2*N #Number of walkers
+r <- 0.5 #Diffusion rate
+Tmax <- 10000 #Time to run random walk
+
+g <- erdos.renyi.game(N, p) #generate network
+
+Wvec <- numeric(N) #vector with number of walkers per node
+
+#assign walkers to all nodes randomly
+for(i in 1:W)
+{
+  j <- sample(c(1:length(Wvec)), 1)
+  
+  if(j==0)
+  {
+    j <- j+1
+  }
+
+  Wvec[j] <- Wvec[j]+1 
+}
+```
+
+#### Simulate and collate for multiple iterations
+
+```{r}
+n_iter <- 100
+
+W_iter <- data.frame()
+
+#conduct multiple iterations
+for(iter in 1:n_iter)
+{
+  df_iter <- RW_stoch(Wvec, g, r, Tmax) #conduct simulation
+  
+  kvec <- degree(g) #degrees of all nodes
+  W_k <- data.frame("degree" = kvec,
+                  "W_sim" = unlist(df_iter[Tmax,-1]))
+
+  W_k_agg <- aggregate.data.frame(W_k[,c("W_sim")], by = list(W_k$degree), FUN =
+                                    "mean") #aggregate by degree
+  
+  W_k_agg <- cbind(W_k_agg, rep(iter, nrow(W_k_agg)))
+  W_iter <- rbind(W_iter, W_k_agg)
+}
+
+colnames(W_iter) <- c("degree", "walkers", "iteration")
+
+#Show summary statistics over the ensemble
+#aggregate mean over all trials
+df_agg <- aggregate(W_iter$walkers, by = list(W_iter$degree), FUN = "mean")
+
+#aggregate standard error over all trials (standard deviation/sqrt(N))
+df_agg$se <- aggregate(W_iter$walkers, by = list(W_iter$degree), FUN = "sd")$x/sqrt(n_iter)
+
+df_agg$Analytical <- df_agg$Group.1*W/sum(degree(g))
+
+colnames(df_agg) <- c("degree", "Mean_walkers", "Se_walkers", "Analytical")
+
+```
+
+#### Visualize
+
+```{r}
+ggplot()+
+  stat_smooth(data = W_iter, aes(x = degree, y = walkers), 
+              color = "#eb9c5c", fill = "#eb9c5c55")+
+  geom_line(data = df_agg, aes(x = degree, y = Analytical), color = "#3b719f",
+            linetype = "dashed", linewidth = 1.5)+
+  theme_light(base_size = 20)+
+  labs(x = "Degree", y= "Number of Walkers",
+       title = "Discrete and Stochastic Random Walk",
+       subtitle = "Adjacency matrix approach")+
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        legend.position = "bottom")
+  
+```
+
+## Additional exercise
