@@ -4,7 +4,7 @@ author: "Sharaj Kunjar"
 format: html
 editor: visual
 editor_options: 
-  chunk_output_type: console
+  chunk_output_type: inline
 ---
 
 # Discrete Random Walks on networks
@@ -31,6 +31,7 @@ library(igraph)
 library(ggplot2)
 library(scales)
 library(tidyverse)
+library(netUtils)
 ```
 
 ## Deterministic
@@ -386,4 +387,181 @@ ggplot()+
   
 ```
 
-## Additional exercise
+# Additional exercises
+
+In these exercises, we will study how the time taken for a random walk process to reach equilibrium on a network depends on structural properties of the network: namely, homophily and preferential attachment
+
+First, we will write the function for deriving random walk time.
+
+```{r}
+#Given a dataframe with columns corresponding to number of walkers on different nodes and rows corresponding to different time point, output equilibrium time
+
+T_eq <- function(Wdf, thresh)
+{
+  ddf <- as.data.frame(matrix(nrow = nrow(Wdf)-1,
+                              ncol = ncol(Wdf)))
+  
+  Teq <- NA
+  
+  for(t in 1:nrow(ddf))
+  {
+    ddf[t,] <- Wdf[t+1,] - Wdf[t,] 
+        
+    if(all(abs(ddf[t,]) <= thresh))
+    {
+      Teq <- t
+      break
+     }
+  }
+  
+  return(Teq)
+}
+```
+
+## Random walk time as a function of preferential attachment 
+
+We will use the BA model with preferential attachment
+
+#### Simulate
+
+```{r}
+N <- 100 #Network size
+m <- 2 #number of edges per incoming node for BA model
+W <- 2*N #Number of walkers
+r <- 0.5 #Diffusion rate
+Tmax <- 300 #Time to run random walk
+
+p_vec <- seq(0.1,1, length.out = 20) #preferential attachment exponent (alpha)
+
+g_vec <- 1 + 1/p_vec #power law exponent
+
+thresh <- 10**(-5) #threshold for the T_eq function
+
+g0 <- make_full_graph(4)
+
+n_iter <- 20 #run multiple iterations
+
+tdf_iter <- data.frame()
+
+for(iter in 1:n_iter)
+{
+  time_df <- data.frame("power" = p_vec,
+                      "time" = NA,
+                      "iteration" = rep(iter, length(p_vec)))
+  
+  for(p in 1:length(p_vec))
+  {
+    g <- sample_pa(N, power = p_vec[p], m = m, directed = F, start.graph = g0) #generate graph
+    A <- as.matrix(as_adjacency_matrix(g)) #adjacency matrix
+    
+    Wvec <- numeric(N) #vector with number of walkers per node 
+  
+    #assign walkers to all nodes randomly
+    for(i in 1:W)
+    {
+      j <- sample(c(1:N), 1)
+      Wvec[j] <- Wvec[j]+1 
+    }
+    
+    W_df <- RW_adj(Wvec, r, A, Tmax) #simulate the network
+    
+    time_df$time[p] <- T_eq(W_df[,-1], thresh) 
+  }
+  
+  tdf_iter <- rbind(tdf_iter, time_df)
+}
+
+tdf_agg <- aggregate(tdf_iter$time, by = list(tdf_iter$power), FUN = "mean")
+
+colnames(tdf_agg) <- c("alpha", "time")
+tdf_agg$gamma <- g_vec
+
+```
+
+#### Visualize 
+
+```{r}
+ggplot(tdf_agg, aes(x=gamma, y = time))+
+  geom_line(linetype = "dashed", linewidth = 1.2, color = "#eb9c5c66")+
+  geom_point(size = 3, color = "#eb9c5c")+
+    theme_light(base_size = 20)+
+  labs(x = "Power law exponent (gamma)", y= "Time taken to finish random walk",
+       title = "Discrete and Deterministic Random Walk",
+       subtitle = "Adjacency matrix approach")+
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        legend.position = "bottom")
+  
+```
+
+## Random walk time as a function of network homophily
+
+We will use the BA model with homophily
+
+#### Simulate
+
+```{r}
+N <- 100 #Network size
+m <- 2 #number of edges per incoming node for BA model
+W <- 2*N #Number of walkers
+r <- 0.5 #Diffusion rate
+Tmax <- 300 #Time to run random walk
+
+p_vec <- seq(0.05,0.95, length.out = 20) #homophily coefficient
+
+thresh <- 10**(-5) #threshold for the T_eq function
+
+n_iter <- 20 #run multiple iterations
+
+tdf_iter <- data.frame()
+
+for(iter in 1:n_iter)
+{
+  time_df <- data.frame("homophily" = p_vec,
+                      "time" = NA,
+                      "iteration" = rep(iter, length(p_vec)))
+  
+  for(p in 1:length(p_vec))
+  {
+    #alpha =1 by default
+    g <- sample_pa_homophilic(N, m, 0.2, h_ab = p_vec[p]) #generate graph
+    A <- as.matrix(as_adjacency_matrix(g)) #adjacency matrix
+    
+    Wvec <- numeric(N) #vector with number of walkers per node 
+  
+    #assign walkers to all nodes randomly
+    for(i in 1:W)
+    {
+      j <- sample(c(1:N), 1)
+      Wvec[j] <- Wvec[j]+1 
+    }
+    
+    W_df <- RW_adj(Wvec, r, A, Tmax) #simulate the network
+    
+    time_df$time[p] <- T_eq(W_df[,-1], thresh) 
+  }
+  
+  tdf_iter <- rbind(tdf_iter, time_df)
+}
+
+tdf_agg <- aggregate(tdf_iter$time, by = list(tdf_iter$homophily), FUN = "mean")
+
+colnames(tdf_agg) <- c("homophily", "time")
+
+```
+
+### Visualize
+
+```{r}
+ggplot(tdf_agg, aes(x=homophily, y = time))+
+  geom_line(linetype = "dashed", linewidth = 1.2, color = "#eb9c5c66")+
+  geom_point(size = 3, color = "#eb9c5c")+
+    theme_light(base_size = 20)+
+  labs(x = "Homophily", y= "Time taken to finish random walk",
+       title = "Discrete and Deterministic Random Walk",
+       subtitle = "Adjacency matrix approach")+
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        legend.position = "bottom")
+  
+```
