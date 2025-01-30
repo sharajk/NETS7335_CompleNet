@@ -7,6 +7,7 @@ editor_options:
   chunk_output_type: inline
 ---
 
+
 # Discrete Random Walks on networks
 
 Given a network, we have
@@ -25,6 +26,7 @@ Assumptions
 
     The random walk process is Markov
 
+
 ```{r}
 #load packages
 library(igraph)
@@ -33,6 +35,7 @@ library(scales)
 library(tidyverse)
 library(netUtils)
 ```
+
 
 ## Deterministic
 
@@ -52,6 +55,7 @@ $W_i(\infty) = W*k_i/2L$
 where L is the total number of edges in the networks
 
 #### Function to compute W
+
 
 ```{r}
 #Input is initial vector of walkers per node, diffusion rate, adjacency matrix and max number of iterations
@@ -86,7 +90,9 @@ RW_adj <- function(vec, r, A, Tmax)
 }
 ```
 
+
 #### Initialize variables
+
 
 ```{r}
 N <- 500 #Network size
@@ -108,7 +114,9 @@ for(i in 1:W)
 }
 ```
 
+
 #### Simulate and visualize
+
 
 ```{r}
 W_df <- RW_adj(Wvec, r, A, Tmax) #simulate the network
@@ -141,6 +149,7 @@ ggplot(df_plot, aes(x=degree, y = Num_walkers, size = Condition,
 
 ```
 
+
 ### Input is a degree block
 
 We are now only given degree distribution $P(k)$, and degree correlations $P(k'|k)$
@@ -162,6 +171,7 @@ $$
 where $<k>$ is the average degree and $<W> = W/N$ is the average number of walkers per node
 
 #### Function to compute W
+
 
 ```{r}
 #Input is the initial vector of walkers per node of degree k, diffusion rate r, 
@@ -193,7 +203,9 @@ RW_Pk <- function(vec, r, P, N, Tmax)
 }
 ```
 
+
 #### Initialize variables
+
 
 ```{r}
 N <- 500 #Network size
@@ -224,7 +236,9 @@ for(i in 1:W)
 }
 ```
 
+
 #### Simulate and visualize
+
 
 ```{r}
 W_df <- RW_Pk(Wvec, r, P, N, Tmax) #simulate the network
@@ -253,6 +267,7 @@ ggplot(df_plot, aes(x=degree, y = Num_walkers, size = Condition,
         legend.position = "bottom")
 ```
 
+
 ## Stochastic
 
 In the stochastic approach, given a network with initial distribution of random walkers, at every time step $t$:
@@ -263,6 +278,7 @@ In the stochastic approach, given a network with initial distribution of random 
 4.  We then move the random walker to the node $j$
 
 Given the stochastic nature of this process, it is repeated several times to obtain an ensemble of possible results.
+
 
 ```{r}
 RW_stoch <- function(vec, g, r, Tmax)
@@ -304,7 +320,9 @@ RW_stoch <- function(vec, g, r, Tmax)
 }
 ```
 
+
 #### Initialize variables
+
 
 ```{r}
 N <- 100 #Network size
@@ -331,7 +349,9 @@ for(i in 1:W)
 }
 ```
 
+
 #### Simulate and collate for multiple iterations
+
 
 ```{r}
 n_iter <- 100
@@ -369,7 +389,9 @@ colnames(df_agg) <- c("degree", "Mean_walkers", "Se_walkers", "Analytical")
 
 ```
 
+
 #### Visualize
+
 
 ```{r}
 ggplot()+
@@ -387,11 +409,13 @@ ggplot()+
   
 ```
 
+
 # Additional exercises
 
 In these exercises, we will study how the time taken for a random walk process to reach equilibrium on a network depends on structural properties of the network: namely, homophily and preferential attachment
 
 First, we will write the function for deriving random walk time.
+
 
 ```{r}
 #Given a dataframe with columns corresponding to number of walkers on different nodes and rows corresponding to different time point, output equilibrium time
@@ -418,11 +442,13 @@ T_eq <- function(Wdf, thresh)
 }
 ```
 
+
 ## Random walk time as a function of preferential attachment
 
 We will use the BA model with preferential attachment
 
 #### Simulate
+
 
 ```{r}
 N <- 100 #Network size
@@ -478,7 +504,9 @@ tdf_agg$gamma <- g_vec
 
 ```
 
+
 #### Visualize
+
 
 ```{r}
 ggplot(tdf_agg, aes(x=gamma, y = time))+
@@ -494,11 +522,13 @@ ggplot(tdf_agg, aes(x=gamma, y = time))+
   
 ```
 
+
 ## Random walk time as a function of network homophily
 
 We will use the BA model with homophily
 
 #### Simulate
+
 
 ```{r}
 N <- 100 #Network size
@@ -550,7 +580,9 @@ colnames(tdf_agg) <- c("homophily", "time")
 
 ```
 
+
 ### Visualize
+
 
 ```{r}
 ggplot(tdf_agg, aes(x=homophily, y = time))+
@@ -565,3 +597,4 @@ ggplot(tdf_agg, aes(x=homophily, y = time))+
         legend.position = "bottom")
   
 ```
+

@@ -1,0 +1,85 @@
+---
+title: "SIR_model"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+# SIR model
+
+```{r}
+library(igraph)
+library(ggplot2)
+library(scales)
+library(tidyverse)
+library(netUtils)
+```
+
+## Homogeneous mixing and discrete time
+
+### Code function for SIR model with homogeneous mixing
+
+```{r}
+#input: Initial infected population, Population size, infection rate beta, recovery rate mu, max run time Tmax
+SIR_homo <- function(i0, N, b, m, Tmax)
+{
+  s <- numeric(Tmax) #susceptible
+  s[1] <- N - i0
+  i <- numeric(Tmax) #infected
+  i[1] <- i0
+  r <- numeric(Tmax) #recovered
+  r[1] <- N - s[1] - i[1]
+  
+  for(t in 2:Tmax)
+  {
+    s[t] <- s[t-1] - b*i[t-1]*s[t-1]/N
+    i[t] <- i[t-1] + b*i[t-1]*s[t-1]/N - m*i[t-1]
+    r[t] <- N - s[t] - i[t]
+    
+    if(any(c(s[t],i[t],r[t]) < 0))
+    {
+      s[(t+1):Tmax] <- s[t] 
+      i[(t+1):Tmax] <- i[t] 
+      r[(t+1):Tmax] <- r[t] 
+      break
+    }
+  }
+  
+  df <- data.frame("Time" = c(1:Tmax),
+                   "S" = s,
+                   "I" = i,
+                   "R" = r)
+  
+  return(df)
+}
+```
+
+### Initialize variables and simulate
+
+```{r}
+N <- 500
+Tmax <- 50
+b <- 1
+m <- 0.2
+i0 <- N*0.01
+
+sir_df <- SIR_homo(i0, N, b, m ,Tmax)
+
+plot_df <- reshape2::melt(sir_df, id.vars = c("Time"), value.name = "Proportion", variable.name = "Type")
+plot_df$Proportion <- plot_df$Proportion/N
+```
+
+### Visualize
+
+```{r}
+ggplot(plot_df, aes(x=Time, y = Proportion, color = Type))+
+  theme_light(base_size = 20)+
+  geom_line(linewidth = 1.2)+
+  scale_color_manual(values = c("#a90505", "#3b719f", "#5fa052"))+
+  labs(title = "Discrete time and homogeneous mixing",
+       subtitle = "SIR model")+
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        legend.position = "bottom")
+```
