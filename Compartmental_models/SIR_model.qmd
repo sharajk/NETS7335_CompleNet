@@ -16,13 +16,26 @@ library(tidyverse)
 library(netUtils)
 ```
 
-## Homogeneous mixing and discrete time
+## Deterministic
 
-### Code function for SIR model with homogeneous mixing
+In this model, we are given uniform transmission probability $\beta$ and recovery probability $\mu$. Time is discrete.
+
+Assumptions
+
+:   1.  Discrete time
+    2.  Fixed and homogenous population
+    3.  Homogeneous mixing
+    4.  $$
+        \beta I(t)/N >> 1 \forall t
+        $$
+
+:   
+
+### Code function 
 
 ```{r}
 #input: Initial infected population, Population size, infection rate beta, recovery rate mu, max run time Tmax
-SIR_homo <- function(i0, N, b, m, Tmax)
+SIR_det <- function(i0, N, b, m, Tmax)
 {
   s <- numeric(Tmax) #susceptible
   s[1] <- N - i0
@@ -64,7 +77,7 @@ b <- 1
 m <- 0.2
 i0 <- N*0.01
 
-sir_df <- SIR_homo(i0, N, b, m ,Tmax)
+sir_df <- SIR_det(i0, N, b, m ,Tmax)
 
 plot_df <- reshape2::melt(sir_df, id.vars = c("Time"), value.name = "Proportion", variable.name = "Type")
 plot_df$Proportion <- plot_df$Proportion/N
@@ -77,9 +90,135 @@ ggplot(plot_df, aes(x=Time, y = Proportion, color = Type))+
   theme_light(base_size = 20)+
   geom_line(linewidth = 1.2)+
   scale_color_manual(values = c("#a90505", "#3b719f", "#5fa052"))+
-  labs(title = "Discrete time and homogeneous mixing",
-       subtitle = "SIR model")+
+  labs(title = "Deterministic SIR model",
+       subtitle = "Discrete time and homogeneous mixing")+
   theme(plot.title = element_text(hjust = 0.5),
         plot.subtitle = element_text(hjust = 0.5),
         legend.position = "bottom")
+```
+
+## Stochastic
+
+Given transmission probabilities $\beta, \mu$ and discrete time, we have
+
+$$
+S(t+1) = S(t) - Bin(S(t), \lambda(t)) \\
+I(t+1) = I(t) + Bin(S(t), \lambda(t)) -Bin(I(t),\mu) \\
+R(t+1) = R(t) + Bin(I(t), \mu)
+$$
+
+where $\lambda(t) = 1 - (1-\beta/N-1)^{I(t)}$ is the force of infection
+
+### Code function 
+
+```{r}
+#input: Initial infected population, Population size, infection rate beta, recovery rate mu, max run time Tmax
+SIR_stoch <- function(i0, N, b, m, Tmax)
+{
+  s <- numeric(Tmax) #susceptible
+  s[1] <- N - i0
+  i <- numeric(Tmax) #infected
+  i[1] <- i0
+  r <- numeric(Tmax) #recovered
+  r[1] <- N - s[1] - i[1]
+  
+  for(t in 2:Tmax)
+  {
+    #force of infection
+    lt <- 1 - (1-b/(N-1))**i[t-1]
+    
+    #compute the binomial quantities
+    bin_b <- rbinom(1, s[t-1], lt)
+    bin_m <- rbinom(1, i[t-1], m)
+    
+    s[t] <- s[t-1] - bin_b
+    i[t] <- i[t-1] + bin_b - bin_m
+    r[t] <- N - s[t] - i[t]
+    
+    if(any(c(s[t],i[t],r[t]) < 0))
+    {
+      s[(t+1):Tmax] <- s[t] 
+      i[(t+1):Tmax] <- i[t] 
+      r[(t+1):Tmax] <- r[t] 
+      break
+    }
+  }
+  
+  df <- data.frame("Time" = c(1:Tmax),
+                   "S" = s,
+                   "I" = i,
+                   "R" = r)
+  
+  return(df)
+}
+
+```
+
+### Initialize variables and simulate
+
+```{r}
+N <- 1000 #population size
+Tmax <- 50 #Total time to run
+b <- 1 #transmissibility
+m <- 0.2 #recovery rate
+i0 <- 5 #initial infected individuals
+
+n_iter <- 10 #number of iterations to run
+
+df_stoch <- data.frame()
+
+for(iter in 1:n_iter)
+{
+  sir_df <- SIR_stoch(i0, N, b, m ,Tmax) #run simulation
+  sir_df$iteration <- rep(iter, nrow(sir_df))
+  
+  df_stoch <- rbind(df_stoch, sir_df)
+}
+
+stoch <- reshape2::melt(df_stoch, id.vars = c("Time", "iteration"), value.name = "Proportion", variable.name = "Population")
+
+plot_stoch <- aggregate(stoch$Proportion, by = list(stoch$Time, stoch$Population),
+                        FUN = "mean") #aggregate across all iterations
+colnames(plot_stoch) <- c("Time", "Population", "Proportion")
+
+plot_stoch$sd <- aggregate(stoch$Proportion, by = list(stoch$Time, stoch$Population),
+                        FUN = "sd")$x #obtain confidence intervals 
+plot_stoch$Simulation <- "Stochastic"
+
+
+#Now deterministic
+df_det <- SIR_det(i0, N, b, m ,Tmax)
+plot_det <- reshape2::melt(df_det, id.vars = c("Time"), value.name = "Proportion", variable.name = "Population")
+plot_det$sd <- 0
+plot_det$Simulation <- "Deterministic"
+```
+
+### Visualize
+
+```{r}
+plot_df <- rbind(plot_stoch, plot_det)
+plot_df$Proportion <- plot_df$Proportion/N
+plot_df$sd <- plot_df$sd/N
+
+ggplot(plot_df, aes(x = Time, color = Population,
+                    fill= Population, linetype = Simulation,
+                    linewidth = Simulation))+
+  theme_light(base_size = 20)+
+  geom_line(aes(y = Proportion))+
+  geom_ribbon(aes(ymin = Proportion - sd, ymax = Proportion + sd), 
+              color = NA, alpha = 0.5) +
+  scale_color_manual(values = c("#a90505", "#3b719f", "#5fa052"))+
+  scale_fill_manual(values = c("#a90505", "#3b719f", "#5fa052"))+
+  scale_linetype_manual(values = c("dotted", "solid"))+
+  scale_linewidth_manual(values = c(1.5, 1))+
+  scale_y_continuous(limits = c(0,1), oob = scales::squish)+
+  labs(title = "SIR model",
+       subtitle = "Discrete time and homogeneous mixing",
+       caption = paste0("Population size = ",N))+
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        plot.caption = element_text(hjust = 0.5),
+        legend.position = "bottom")
+
+
 ```
