@@ -31,7 +31,7 @@ Assumptions
 
 :   
 
-### Code function 
+### Code function
 
 ```{r}
 #input: Initial infected population, Population size, infection rate beta, recovery rate mu, max run time Tmax
@@ -109,7 +109,7 @@ $$
 
 where $\lambda(t) = 1 - (1-\beta/N-1)^{I(t)}$ is the force of infection
 
-### Code function 
+### Code function
 
 ```{r}
 #input: Initial infected population, Population size, infection rate beta, recovery rate mu, max run time Tmax
@@ -125,7 +125,8 @@ SIR_stoch <- function(i0, N, b, m, Tmax)
   for(t in 2:Tmax)
   {
     #force of infection
-    lt <- 1 - (1-b/(N-1))**i[t-1]
+    lt <- 1 - (1-b/(N-1))**i[t-1] #actual force of infection
+    #lt <- b*i[t-1]/(N-1) #approximate force of infection
     
     #compute the binomial quantities
     bin_b <- rbinom(1, s[t-1], lt)
@@ -163,7 +164,7 @@ b <- 1 #transmissibility
 m <- 0.2 #recovery rate
 i0 <- 5 #initial infected individuals
 
-n_iter <- 10 #number of iterations to run
+n_iter <- 100 #number of iterations to run
 
 df_stoch <- data.frame()
 
@@ -205,7 +206,7 @@ ggplot(plot_df, aes(x = Time, color = Population,
                     linewidth = Simulation))+
   theme_light(base_size = 20)+
   geom_line(aes(y = Proportion))+
-  geom_ribbon(aes(ymin = Proportion - sd, ymax = Proportion + sd), 
+  geom_ribbon(aes(ymin = Proportion - 2*sd, ymax = Proportion + 2*sd), 
               color = NA, alpha = 0.5) +
   scale_color_manual(values = c("#a90505", "#3b719f", "#5fa052"))+
   scale_fill_manual(values = c("#a90505", "#3b719f", "#5fa052"))+
